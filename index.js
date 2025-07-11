@@ -27,7 +27,22 @@ async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
+ 
+    const usersCollection = client.db("Employetica").collection("user");
 
+    // POST /users
+    app.post("/users", async (req, res) => {
+    const user = req.body;
+
+    // Check if user already exists
+    const existing = await usersCollection.findOne({ email: user.email });
+    if (existing) {
+        return res.status(200).send({ message: "User already exists." });
+    }
+
+    const result = await usersCollection.insertOne(user);
+    res.send(result);
+    });
 
 
 
