@@ -29,6 +29,12 @@ async function run() {
     await client.connect();
  
     const usersCollection = client.db("Employetica").collection("user");
+    const worksheetsCollection = client.db("Employetica").collection("worksheets");
+    const paymentsCollection = client.db("Employetica").collection("payments");
+    const payrollsCollection = client.db("Employetica").collection("payrolls");
+    const contactsCollection = client.db("contacts").collection("contacts");
+
+
 
 
     // get api to get user roll
@@ -63,6 +69,41 @@ async function run() {
       res.send(result);
     });
 
+
+    // Employee api
+
+    // get api
+    app.get('/worksheets', async (req, res) => {
+      try {
+        const email = req.query.email;
+        if (!email) return res.status(400).send({ message: 'Email required' });
+
+        const result = await worksheetsCollection
+          .find({ email })
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: 'Failed to fetch worksheets' });
+      }
+    });
+
+
+
+    // post api
+    app.post('/worksheets', async (req, res) => {
+      try {
+        const worksheets = req.body;
+
+        worksheets.createdAt = new Date();
+
+        const result = await worksheetsCollection.insertOne(worksheets);
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: 'Failed to insert worksheet' });
+      }
+    });
 
 
 
