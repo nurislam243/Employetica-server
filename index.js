@@ -30,18 +30,37 @@ async function run() {
  
     const usersCollection = client.db("Employetica").collection("user");
 
+
+    // get api to get user roll
+    app.get('/users/:email/role', async (req, res) => {
+      const email = req.params.email;
+
+      try {
+        const user = await usersCollection.findOne({ email });
+
+        if (!user) {
+          return res.status(404).send({ error: true, message: 'User not found' });
+        }
+
+        res.send({ role: user.role });
+      } catch (error) {
+        res.status(500).send({ error: true, message: 'Server Error' });
+      }
+    });
+
+
     // POST /users
     app.post("/users", async (req, res) => {
-    const user = req.body;
+      const user = req.body;
 
-    // Check if user already exists
-    const existing = await usersCollection.findOne({ email: user.email });
-    if (existing) {
-        return res.status(200).send({ message: "User already exists." });
-    }
+      // Check if user already exists
+      const existing = await usersCollection.findOne({ email: user.email });
+      if (existing) {
+          return res.status(200).send({ message: "User already exists." });
+      }
 
-    const result = await usersCollection.insertOne(user);
-    res.send(result);
+      const result = await usersCollection.insertOne(user);
+      res.send(result);
     });
 
 
