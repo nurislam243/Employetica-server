@@ -106,6 +106,37 @@ async function run() {
     });
 
 
+    //Task Update API
+    app.put('/task/:id', async (req, res) => {
+      const taskId = req.params.id;
+      const updatedTask = req.body;
+      console.log(updatedTask);
+
+      try {
+        const filter = { _id: new ObjectId(taskId) };
+        const { _id, ...taskWithoutId } = updatedTask;
+        const updateDoc = {
+          $set: {
+            ...taskWithoutId,
+          },
+        };
+
+        const result = await worksheetsCollection.updateOne(filter, updateDoc);
+
+        if (result.modifiedCount > 0) {
+          res.send({ message: 'Task updated successfully' });
+        } else {
+          res.send({ message: 'No changes made to the task' });
+        }
+      } catch (error) {
+        console.error('Update Task Error:', error);
+        res.status(500).send({ message: 'Server error', error: error.message });
+      }
+    });
+
+    
+
+
     // Delete task API
     app.delete('/task/:id', async (req, res) => {
       const taskId = req.params.id;
