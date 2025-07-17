@@ -180,6 +180,26 @@ async function run() {
     });
 
 
+    app.post("/payments", async (req, res) => {
+      try {
+        const paymentData = req.body;
+
+        const newPayment = {
+          ...paymentData,
+          status: "pending",
+          timestamp: new Date(),
+          approvedBy: null,
+        };
+
+        const result = await paymentsCollection.insertOne(newPayment);
+        res.send({ success: true, message: "Payment initiated", result });
+      } catch (err) {
+        res.status(500).send({ success: false, message: err.message });
+      }
+    });
+
+
+
 
     app.patch("/users/verify/:id", async (req, res) => {
       const id = req.params.id;
