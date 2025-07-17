@@ -158,6 +158,17 @@ async function run() {
 
     ///** HR Api **///
 
+    // Get all employees
+    app.get('/users/employee', async (req, res) => {
+      try {
+        const employees = await usersCollection.find({ role: "Employee" }).toArray();
+        res.send(employees);
+      } catch (error) {
+        console.error("Failed to fetch employees:", error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
 
 
     ///** Admin Api **///
