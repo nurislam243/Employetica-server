@@ -170,6 +170,38 @@ async function run() {
     });
 
 
+    app.get('/work-records', async (req, res) => {
+      try {
+        const records = await worksheetsCollection.find().toArray();
+        res.send(records);
+      } catch (error) {
+        res.status(500).send({ message: 'Failed to fetch work records' });
+      }
+    });
+
+
+
+    app.patch("/users/verify/:id", async (req, res) => {
+      const id = req.params.id;
+      const { isVerified } = req.body;
+      console.log(isVerified);
+
+      try {
+        const filter = { _id: new ObjectId(id) };
+        const updateDoc = {
+          $set: { isVerified: isVerified },
+        };
+
+        const result = await usersCollection.updateOne(filter, updateDoc);
+        res.send(result);
+      } catch (err) {
+        console.error("Verification update error:", err);
+        res.status(500).send({ error: "Internal server error" });
+      }
+    });
+
+
+
 
     ///** Admin Api **///
 
