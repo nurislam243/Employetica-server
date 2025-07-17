@@ -60,9 +60,9 @@ async function run() {
       const user = req.body;
 
       // Check if user already exists
-      const existing = await usersCollection.findOne({ email: user.email });
-      if (existing) {
-          return res.status(200).send({ message: "User already exists." });
+      const existingUser = await usersCollection.findOne({ email: user.email });
+      if (existingUser) {
+        return res.status(200).send({ message: "User already exists" });
       }
 
       const result = await usersCollection.insertOne(user);
@@ -70,7 +70,7 @@ async function run() {
     });
 
 
-    // Employee api
+    ///** Employee Api **///
 
     // get api
     app.get('/worksheets', async (req, res) => {
@@ -104,6 +104,32 @@ async function run() {
         res.status(500).send({ message: 'Failed to insert worksheet' });
       }
     });
+
+
+    // Delete task API
+    app.delete('/task/:id', async (req, res) => {
+      const taskId = req.params.id;
+
+      try {
+        const result = await worksheetsCollection.deleteOne({ _id: new ObjectId(taskId) });
+
+        if (result.deletedCount === 1) {
+          res.send({ message: 'Task deleted successfully' });
+        } else {
+          res.status(404).send({ message: 'Task not found' });
+        }
+      } catch (error) {
+        console.error('Delete Task Error:', error);
+        res.status(500).send({ message: 'Server error' });
+      }
+    });
+
+
+    ///** HR Api **///
+
+
+
+    ///** Admin Api **///
 
 
 
