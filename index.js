@@ -241,6 +241,75 @@ async function run() {
 
     ///** Admin Api **///
 
+    // GET /users/verified
+    app.get('/users-verified', async (req, res) => {
+      try {
+        const verifiedUsers = await usersCollection.find({ isVerified: true }).toArray();
+        res.status(200).send(verifiedUsers);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ error: 'Internal Server Error' });
+      }
+    });
+
+
+    // Make HR
+    app.patch('/users/make-hr/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const result = await usersCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { role: 'HR' } }
+        );
+        res.status(200).send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ error: 'Failed to update role' });
+      }
+    });
+
+    // Fire Employee
+    app.patch('/users/fire/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const result = await usersCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { fired: true } }
+        );
+        res.status(200).send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ error: 'Failed to fire employee' });
+      }
+    });
+
+
+    // Increase Salary (only if greater than current)
+    app.patch('/users/salary/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { newSalary } = req.body;
+
+        const user = await usersCollection.findOne({ _id: new ObjectId(id) });
+        if (!user) {
+          return res.status(404).send({ error: 'User not found' });
+        }
+
+        if (newSalary <= user.salary) {
+          return res.status(400).send({ error: 'Cannot decrease salary' });
+        }
+
+        const result = await usersCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { salary: newSalary } }
+        );
+        res.status(200).send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ error: 'Failed to update salary' });
+      }
+    });
+
 
 
     // Send a ping to confirm a successful connection
