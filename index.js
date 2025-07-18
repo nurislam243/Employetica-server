@@ -31,8 +31,7 @@ async function run() {
     const usersCollection = client.db("Employetica").collection("user");
     const worksheetsCollection = client.db("Employetica").collection("worksheets");
     const paymentsCollection = client.db("Employetica").collection("payments");
-    const payrollsCollection = client.db("Employetica").collection("payrolls");
-    const contactsCollection = client.db("contacts").collection("contacts");
+    const contactsCollection = client.db("Employetica").collection("contacts");
 
 
 
@@ -188,7 +187,7 @@ async function run() {
     });
 
     // get payments by employee email
-    app.get('/payments', async (req, res) => {
+    app.get('/payments/employee', async (req, res) => {
       const email = req.query.email;
       const payments = await paymentsCollection.find({ employeeEmail: email }).toArray();
       res.send(payments);
@@ -196,23 +195,36 @@ async function run() {
 
 
 
-    app.post("/payments", async (req, res) => {
-      try {
-        const paymentData = req.body;
+    app.post('/payments', async (req, res) => {
+    const { employeeId, employeeName, employeeEmail, amount, month, year } = req.body;
 
-        const newPayment = {
-          ...paymentData,
-          status: "pending",
-          timestamp: new Date(),
-          approvedBy: null,
-        };
+    // Check if payment already requested for same employee + month + year
+    const existingPayment = await paymentsCollection.findOne({ employeeId, month, year });
+    if (existingPayment) {
+      return res.status(400).send({ message: 'Payment request for this month already exists' });
+    }
 
-        const result = await paymentsCollection.insertOne(newPayment);
-        res.send({ success: true, message: "Payment initiated", result });
-      } catch (err) {
-        res.status(500).send({ success: false, message: err.message });
-      }
-    });
+    const newPayment = {
+      employeeId,
+      employeeName,
+      employeeEmail,
+      amount,
+      month,
+      year,
+      status: 'pending',
+      timestamp: new Date(),
+      approvedBy: null,
+      paymentDate: null,
+    };
+
+    try {
+      const result = await paymentsCollection.insertOne(newPayment);
+      res.send({ success: true, message: 'Payment request created', result });
+    } catch (error) {
+      res.status(500).send({ message: 'Failed to create payment request' });
+    }
+  });
+
 
 
 
@@ -251,6 +263,19 @@ async function run() {
         res.status(500).send({ error: 'Internal Server Error' });
       }
     });
+
+
+    app.get('/payments', async (req, res) => {
+      try {
+        const payments = await paymentsCollection.find().toArray();
+        res.send(payments);
+      } catch (error) {
+        res.status(500).send({ error: 'Failed to fetch payments.' });
+      }
+    });
+
+
+
 
 
     // Make HR
@@ -309,6 +334,86 @@ async function run() {
         res.status(500).send({ error: 'Failed to update salary' });
       }
     });
+
+
+    
+
+
+    app.patch('/payments/:id/pay', async (req, res) => {
+      const paymentId = req.params.id;
+      const { approvedBy } = req.body;
+
+      try {
+        const payment = await paymentsCollection.findOne({ _id: new ObjectId(paymentId) });
+
+        if (!payment) {
+          return res.status(404).send({ message: 'Payment not found' });
+        }
+
+        if (payment.status === 'paid') {
+          return res.status(400).send({ message: 'Payment already processed' });
+        }
+
+        const paymentDate = new Date();
+
+        const result = await paymentsCollection.updateOne(
+          { _id: new ObjectId(paymentId) },
+          {
+            $set: {
+              status: 'paid',
+              paymentDate,
+              approvedBy,
+            },
+          }
+        );
+
+        res.send({ success: true, message: 'Payment marked as paid', result });
+      } catch (error) {
+        res.status(500).send({ message: 'Server error' });
+      }
+    });
+
+
+    //** contact api **//
+
+    //get all contact messages
+    app.get('/contact-messages', async (req, res) => {
+      try {
+        const messages = await contactsCollection.find().sort({ createdAt: -1 }).toArray();
+        res.send(messages);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: 'Failed to fetch messages' });
+      }
+    });
+
+
+    // POST API to receive contact messages
+    app.post('/contact-us', async (req, res) => {
+      const { name, email, message } = req.body;
+
+      if (!name || !email || !message) {
+        return res.status(400).send({ error: true, message: 'All fields are required' });
+      }
+
+      const newMessage = {
+        name,
+        email,
+        message,
+        createdAt: new Date(),
+      };
+
+      try {
+        const result = await contactsCollection.insertOne(newMessage);
+        res.status(201).send({ success: true, message: 'Message received', data: result });
+      } catch (error) {
+        console.error('Contact message insertion error:', error);
+        res.status(500).send({ error: true, message: 'Failed to save message' });
+      }
+    });
+
+
+
 
 
 
