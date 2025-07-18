@@ -180,6 +180,22 @@ async function run() {
     });
 
 
+    /// get user by slug (email)
+    app.get('/users/:slug', async (req, res) => {
+      const slug = req.params.slug;
+      const user = await usersCollection.findOne({ email: slug });
+      res.send(user);
+    });
+
+    // get payments by employee email
+    app.get('/payments', async (req, res) => {
+      const email = req.query.email;
+      const payments = await paymentsCollection.find({ employeeEmail: email }).toArray();
+      res.send(payments);
+    });
+
+
+
     app.post("/payments", async (req, res) => {
       try {
         const paymentData = req.body;
