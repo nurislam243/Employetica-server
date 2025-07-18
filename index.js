@@ -2,6 +2,8 @@ const express = require("express");
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require("dotenv").config();
+const Stripe = require('stripe');
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 
 const app = express();
@@ -414,6 +416,48 @@ async function run() {
 
 
 
+    // ** stripe api **//
+
+    app.post('/payments/:id/approve', async (req, res) => {
+      const paymentId = req.params.id;
+      const { paymentMethodId, approvedBy } = req.body;
+
+      try {
+        const payment = await paymentsCollection.findOne({ _id: new ObjectId(paymentId) });
+
+        if (!payment) {
+          return res.status(404).send({ message: 'Payment request not found' });
+        }
+
+        if (payment.status === 'paid') {
+          return res.status(400).send({ message: 'Payment already processed' });
+        }
+
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: payment.amount * 100,
+          currency: 'usd',
+          payment_method: paymentMethodId,
+          confirm: true,
+        });
+
+        await paymentsCollection.updateOne(
+          { _id: new ObjectId(paymentId) },
+          {
+            $set: {
+              status: 'paid',
+              paymentDate: new Date(),
+              approvedBy,
+              stripePaymentId: paymentIntent.id,
+            },
+          }
+        );
+
+        res.send({ success: true, message: 'Payment successful and approved' });
+      } catch (error) {
+        console.error('Stripe payment error:', error);
+        res.status(500).send({ message: 'Payment failed', error: error.message });
+      }
+    });
 
 
 
