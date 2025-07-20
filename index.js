@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const admin = require("firebase-admin");
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require("dotenv").config();
 const Stripe = require('stripe');
@@ -12,6 +13,15 @@ const port = process.env.PORT || 5000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+
+const serviceAccount = require("./firebase-admin-key.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+
 
 // MongoDB setup
 const uri = process.env.MONGODB_URI;
@@ -34,6 +44,64 @@ async function run() {
     const worksheetsCollection = client.db("Employetica").collection("worksheets");
     const paymentsCollection = client.db("Employetica").collection("payments");
     const contactsCollection = client.db("Employetica").collection("contacts");
+
+
+    // coustom middlewares
+
+    const verifyFBToken = async(req, res, next) =>{
+      const authHeader = req.headers.authorization;
+      if(!authHeader){
+        return res.status(401).send({ message: 'unauthorized access' })
+      }
+      const token = authHeader.split(' ')[1];
+      if(!token){
+        return res.status(401).send({ message: 'unauthorized access' })
+      }
+
+      // verify the token
+      try{
+        const decoded = await admin.auth().verifyIdToken(token);
+        req.decoded = decoded;
+        next();
+      }
+      catch(error){
+        return res.status(403).send({ message: 'forbidden access' })
+      }
+    }
+
+
+
+    // Middleware to verify Employee role
+    const verifyEmployee = async (req, res, next) => {
+      const email = req.decoded.email;
+      const user = await usersCollection.findOne({ email });
+      if (!user || user.role !== "Employee") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      next();
+    };
+
+
+    // Middleware to verify HR role
+    const verifyHR = async (req, res, next) => {
+      const email = req.decoded.email;
+      const user = await usersCollection.findOne({ email });
+      if (!user || user.role !== "HR") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      next();
+    };
+
+    // Middleware to verify Admin role
+    const verifyAdmin = async(req, res, next) =>{
+      const email = req.decoded.email;
+      const query = { email }
+      const user = await usersCollection.findOne(query);
+      if(!user || user.role !== 'Admin'){
+        return res.status(403).send({ message: 'forbidden access'})
+      }
+      next();
+    }
 
 
 
@@ -89,6 +157,35 @@ async function run() {
         res.status(500).send({ message: 'Failed to fetch worksheets' });
       }
     });
+
+
+    app.get('/payment-history', async (req, res) => {
+      const { email, page = 1, limit = 5 } = req.query;
+      const skip = (page - 1) * limit;
+
+      if (!email) {
+        return res.status(400).json({ error: 'Email is required' });
+      }
+
+      try {
+        const query = { employeeEmail: email };
+
+        const payments = await paymentsCollection
+          .find(query)
+          .sort({ year: -1, month: -1 })  // latest first
+          .skip(Number(skip))
+          .limit(Number(limit))
+          .toArray();
+
+        const totalCount = await paymentsCollection.countDocuments(query);
+
+        res.json({ payments, totalCount });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+
 
 
 
@@ -256,7 +353,7 @@ async function run() {
     ///** Admin Api **///
 
     // GET /users/verified
-    app.get('/users-verified', async (req, res) => {
+    app.get('/users-verified', verifyFBToken, verifyAdmin, async (req, res) => {
       try {
         const verifiedUsers = await usersCollection.find({ isVerified: true }).toArray();
         res.status(200).send(verifiedUsers);
@@ -267,7 +364,7 @@ async function run() {
     });
 
 
-    app.get('/payments', async (req, res) => {
+    app.get('/payments', verifyFBToken, verifyAdmin, async (req, res) => {
       try {
         const payments = await paymentsCollection.find().toArray();
         res.send(payments);
@@ -338,43 +435,6 @@ async function run() {
     });
 
 
-    
-
-
-    app.patch('/payments/:id/pay', async (req, res) => {
-      const paymentId = req.params.id;
-      const { approvedBy } = req.body;
-
-      try {
-        const payment = await paymentsCollection.findOne({ _id: new ObjectId(paymentId) });
-
-        if (!payment) {
-          return res.status(404).send({ message: 'Payment not found' });
-        }
-
-        if (payment.status === 'paid') {
-          return res.status(400).send({ message: 'Payment already processed' });
-        }
-
-        const paymentDate = new Date();
-
-        const result = await paymentsCollection.updateOne(
-          { _id: new ObjectId(paymentId) },
-          {
-            $set: {
-              status: 'paid',
-              paymentDate,
-              approvedBy,
-            },
-          }
-        );
-
-        res.send({ success: true, message: 'Payment marked as paid', result });
-      } catch (error) {
-        res.status(500).send({ message: 'Server error' });
-      }
-    });
-
 
     //** contact api **//
 
@@ -418,46 +478,64 @@ async function run() {
 
     // ** stripe api **//
 
-    app.post('/payments/:id/approve', async (req, res) => {
-      const paymentId = req.params.id;
-      const { paymentMethodId, approvedBy } = req.body;
+    app.get('/payments/:id', async (req, res) => {
+      const { id } = req.params;
 
       try {
-        const payment = await paymentsCollection.findOne({ _id: new ObjectId(paymentId) });
+        const payment = await paymentsCollection.findOne({ _id: new ObjectId(id) });
 
         if (!payment) {
-          return res.status(404).send({ message: 'Payment request not found' });
+          return res.status(404).send({ success: false, message: 'Payment not found' });
         }
 
-        if (payment.status === 'paid') {
-          return res.status(400).send({ message: 'Payment already processed' });
-        }
-
-        const paymentIntent = await stripe.paymentIntents.create({
-          amount: payment.amount * 100,
-          currency: 'usd',
-          payment_method: paymentMethodId,
-          confirm: true,
-        });
-
-        await paymentsCollection.updateOne(
-          { _id: new ObjectId(paymentId) },
-          {
-            $set: {
-              status: 'paid',
-              paymentDate: new Date(),
-              approvedBy,
-              stripePaymentId: paymentIntent.id,
-            },
-          }
-        );
-
-        res.send({ success: true, message: 'Payment successful and approved' });
+        res.send(payment);
       } catch (error) {
-        console.error('Stripe payment error:', error);
-        res.status(500).send({ message: 'Payment failed', error: error.message });
+        res.status(500).send({ success: false, message: 'Failed to fetch payment', error: error.message });
       }
     });
+
+
+    app.post('/create-payment-intent', async (req, res) => {
+      try {
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: req.body.amount,
+          currency: 'usd',
+        });
+        res.json({ clientSecret: paymentIntent.client_secret });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+
+    app.patch('/payments/:id', async (req, res) => {
+      const id = req.params.id;
+      const {
+        transactionId,
+        paymentDate,
+        status,
+        approvedBy
+      } = req.body;
+
+      try {
+        const filter = { _id: new ObjectId(id) };
+        const updateDoc = {
+          $set: {
+            transactionId,
+            paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+            status: status || 'paid',
+            approvedBy: approvedBy || 'Auto Stripe',
+          },
+        };
+
+        const result = await paymentsCollection.updateOne(filter, updateDoc);
+        res.send({ success: true, result });
+      } catch (error) {
+        res.status(500).send({ success: false, message: 'Failed to update payment', error: error.message });
+      }
+    });
+
+
 
 
 
