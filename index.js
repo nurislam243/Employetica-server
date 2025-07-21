@@ -142,7 +142,7 @@ async function run() {
     ///** Employee Api **///
 
     // get api
-    app.get('/worksheets', async (req, res) => {
+    app.get('/worksheets', verifyFBToken, verifyEmployee, async (req, res) => {
       try {
         const email = req.query.email;
         if (!email) return res.status(400).send({ message: 'Email required' });
@@ -159,7 +159,7 @@ async function run() {
     });
 
 
-    app.get('/payment-history', async (req, res) => {
+    app.get('/payment-history', verifyFBToken, verifyEmployee, async (req, res) => {
       const { email, page = 1, limit = 5 } = req.query;
       const skip = (page - 1) * limit;
 
@@ -168,11 +168,11 @@ async function run() {
       }
 
       try {
-        const query = { employeeEmail: email };
+        const query = { employeeEmail: email, status: "paid" };
 
         const payments = await paymentsCollection
           .find(query)
-          .sort({ year: -1, month: -1 })  // latest first
+          .sort({ paymentDate: -1 })
           .skip(Number(skip))
           .limit(Number(limit))
           .toArray();
@@ -185,12 +185,35 @@ async function run() {
       }
     });
 
+    // employee overview api
+    app.get('/overview/employee', verifyFBToken, verifyEmployee, async (req, res) => {
+      const email = req.decoded.email;
+
+      try {
+        const user = await usersCollection.findOne({ email });
+        const tasks = await worksheetsCollection.find({ email }).toArray();
+        const payments = await paymentsCollection.find({ employeeEmail: email, status: 'paid' }).toArray();
+
+        res.send({
+          name: user.name,
+          role: user.role,
+          totalTasks: tasks.length,
+          salary: user.salary || 0,
+          paidPayments: payments.length,
+          lastPaymentDate: payments[0]?.paymentDate || null,
+          isVerified: user.isVerified || false
+        });
+      } catch (error) {
+        res.status(500).send({ message: 'Failed to fetch employee overview', error: error.message });
+      }
+    });
+
 
 
 
 
     // post api
-    app.post('/worksheets', async (req, res) => {
+    app.post('/worksheets', verifyFBToken, verifyEmployee, async (req, res) => {
       try {
         const worksheets = req.body;
 
@@ -205,7 +228,7 @@ async function run() {
 
 
     //Task Update API
-    app.put('/task/:id', async (req, res) => {
+    app.put('/task/:id', verifyFBToken, verifyEmployee, async (req, res) => {
       const taskId = req.params.id;
       const updatedTask = req.body;
       console.log(updatedTask);
@@ -236,7 +259,7 @@ async function run() {
 
 
     // Delete task API
-    app.delete('/task/:id', async (req, res) => {
+    app.delete('/task/:id', verifyFBToken, verifyEmployee, async (req, res) => {
       const taskId = req.params.id;
 
       try {
@@ -257,7 +280,7 @@ async function run() {
     ///** HR Api **///
 
     // Get all employees
-    app.get('/users/employee', async (req, res) => {
+    app.get('/users/employee', verifyFBToken, verifyHR, async (req, res) => {
       try {
         const employees = await usersCollection.find({ role: "Employee" }).toArray();
         res.send(employees);
@@ -268,7 +291,7 @@ async function run() {
     });
 
 
-    app.get('/work-records', async (req, res) => {
+    app.get('/work-records', verifyFBToken, verifyHR, async (req, res) => {
       try {
         const records = await worksheetsCollection.find().toArray();
         res.send(records);
@@ -279,22 +302,42 @@ async function run() {
 
 
     /// get user by slug (email)
-    app.get('/users/:slug', async (req, res) => {
+    app.get('/users/:slug', verifyFBToken, verifyHR, async (req, res) => {
       const slug = req.params.slug;
       const user = await usersCollection.findOne({ email: slug });
       res.send(user);
     });
 
     // get payments by employee email
-    app.get('/payments/employee', async (req, res) => {
+    app.get('/payments/employee', verifyFBToken, verifyHR, async (req, res) => {
       const email = req.query.email;
       const payments = await paymentsCollection.find({ employeeEmail: email }).toArray();
       res.send(payments);
     });
 
 
+    // hr overview api
+    app.get('/overview/hr', verifyFBToken, verifyHR, async (req, res) => {
+      try {
+        const totalEmployees = await usersCollection.countDocuments({ role: 'Employee' });
+        const totalVerified = await usersCollection.countDocuments({ role: 'Employee', isVerified: true });
+        const leavesToday = 0; // You can add leave data if implemented
+        const totalPendingPayments = await paymentsCollection.countDocuments({ status: 'pending' });
 
-    app.post('/payments', async (req, res) => {
+        res.send({
+          totalEmployees,
+          verifiedEmployees: totalVerified,
+          pendingPayments: totalPendingPayments,
+          message: 'HR overview data'
+        });
+      } catch (error) {
+        res.status(500).send({ message: 'Failed to fetch HR overview', error: error.message });
+      }
+    });
+
+
+
+    app.post('/payments', verifyFBToken, verifyHR, async (req, res) => {
     const { employeeId, employeeName, employeeEmail, amount, month, year } = req.body;
 
     // Check if payment already requested for same employee + month + year
@@ -322,13 +365,13 @@ async function run() {
     } catch (error) {
       res.status(500).send({ message: 'Failed to create payment request' });
     }
-  });
+    });
 
 
 
 
 
-    app.patch("/users/verify/:id", async (req, res) => {
+    app.patch("/users/verify/:id", verifyFBToken, verifyHR, async (req, res) => {
       const id = req.params.id;
       const { isVerified } = req.body;
       console.log(isVerified);
@@ -374,11 +417,34 @@ async function run() {
     });
 
 
+    app.get('/overview/admin', verifyFBToken, verifyAdmin, async (req, res) => {
+      try {
+        const totalUsers = await usersCollection.countDocuments();
+        const totalEmployees = await usersCollection.countDocuments({ role: 'Employee' });
+        const totalHRs = await usersCollection.countDocuments({ role: 'HR' });
+        const totalPayments = await paymentsCollection.countDocuments();
+        const totalSalary = await usersCollection.aggregate([
+          { $match: { role: 'Employee' } },
+          { $group: { _id: null, total: { $sum: "$salary" } } }
+        ]).toArray();
+
+        res.send({
+          totalUsers,
+          totalEmployees,
+          totalHRs,
+          totalPayments,
+          totalSalaryBudget: totalSalary[0]?.total || 0,
+        });
+      } catch (error) {
+        res.status(500).send({ message: 'Failed to fetch admin overview', error: error.message });
+      }
+    });
+
 
 
 
     // Make HR
-    app.patch('/users/make-hr/:id', async (req, res) => {
+    app.patch('/users/make-hr/:id', verifyFBToken, verifyAdmin, async (req, res) => {
       try {
         const id = req.params.id;
         const result = await usersCollection.updateOne(
@@ -393,7 +459,7 @@ async function run() {
     });
 
     // Fire Employee
-    app.patch('/users/fire/:id', async (req, res) => {
+    app.patch('/users/fire/:id', verifyFBToken, verifyAdmin, async (req, res) => {
       try {
         const id = req.params.id;
         const result = await usersCollection.updateOne(
@@ -409,7 +475,7 @@ async function run() {
 
 
     // Increase Salary (only if greater than current)
-    app.patch('/users/salary/:id', async (req, res) => {
+    app.patch('/users/salary/:id', verifyFBToken, verifyAdmin, async (req, res) => {
       try {
         const id = req.params.id;
         const { newSalary } = req.body;
@@ -439,7 +505,7 @@ async function run() {
     //** contact api **//
 
     //get all contact messages
-    app.get('/contact-messages', async (req, res) => {
+    app.get('/contact-messages', verifyFBToken, verifyAdmin, async (req, res) => {
       try {
         const messages = await contactsCollection.find().sort({ createdAt: -1 }).toArray();
         res.send(messages);
@@ -478,7 +544,7 @@ async function run() {
 
     // ** stripe api **//
 
-    app.get('/payments/:id', async (req, res) => {
+    app.get('/payments/:id', verifyFBToken, verifyAdmin, async (req, res) => {
       const { id } = req.params;
 
       try {
@@ -495,7 +561,7 @@ async function run() {
     });
 
 
-    app.post('/create-payment-intent', async (req, res) => {
+    app.post('/create-payment-intent', verifyFBToken, verifyAdmin, async (req, res) => {
       try {
         const paymentIntent = await stripe.paymentIntents.create({
           amount: req.body.amount,
@@ -508,7 +574,7 @@ async function run() {
     });
 
 
-    app.patch('/payments/:id', async (req, res) => {
+    app.patch('/payments/:id', verifyFBToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
       const {
         transactionId,
