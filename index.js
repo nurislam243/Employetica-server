@@ -48,26 +48,30 @@ async function run() {
 
     // coustom middlewares
 
-    const verifyFBToken = async(req, res, next) =>{
+    const verifyFBToken = async(req, res, next) => {
       const authHeader = req.headers.authorization;
-      if(!authHeader){
-        return res.status(401).send({ message: 'unauthorized access' })
+      if (!authHeader) {
+        return res.status(401).send({ message: 'unauthorized access' });
       }
       const token = authHeader.split(' ')[1];
-      if(!token){
-        return res.status(401).send({ message: 'unauthorized access' })
+      if (!token) {
+        return res.status(401).send({ message: 'unauthorized access' });
       }
 
-      // verify the token
-      try{
+      try {
         const decoded = await admin.auth().verifyIdToken(token);
         req.decoded = decoded;
+
+        const user = await usersCollection.findOne({ email: decoded.email });
+        if (user?.fired === true) {
+          return res.status(403).send({ message: 'You have been fired. Access denied.' });
+        }
+
         next();
+      } catch (error) {
+        return res.status(403).send({ message: 'forbidden access' });
       }
-      catch(error){
-        return res.status(403).send({ message: 'forbidden access' })
-      }
-    }
+    };
 
 
 
@@ -102,6 +106,16 @@ async function run() {
       }
       next();
     }
+
+
+    app.get('/is-fired-user/:email', async (req, res) => {
+      const paramEmail = req.params?.email?.toLowerCase();
+      console.log('params-email', paramEmail);
+
+      const user = await usersCollection.findOne({ email: paramEmail });
+
+      res.send({ fired: user?.fired || false });
+    });
 
 
 
