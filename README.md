@@ -7,8 +7,8 @@ Employetica is a robust employee management system that streamlines organization
 📅 Employee Worksheet Logging and Reporting  
 📨 Contact Message Submission & Admin Review  
 
-**Frontend Repo**: [Employetica Client](https://github.com/your-username/employetica-client)  
-**Live Website**: [Live Link](https://employetica.web.app)  
+**Frontend Repo**: [Employetica Client](https://github.com/Programming-Hero-Web-Course4/b11a12-client-side-nurislam243?tab=readme-ov-file)  
+**Live Website**: [Live Link](https://employetica.web.app/)  
 
 
 ## 🛠️ Technologies
