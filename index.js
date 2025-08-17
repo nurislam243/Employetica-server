@@ -45,6 +45,7 @@ async function run() {
     const worksheetsCollection = client.db("Employetica").collection("worksheets");
     const paymentsCollection = client.db("Employetica").collection("payments");
     const contactsCollection = client.db("Employetica").collection("contacts");
+    const updatesCollection = client.db("Employetica").collection("allUpdate");
 
 
     // coustom middlewares
@@ -137,6 +138,18 @@ async function run() {
         res.status(500).send({ error: true, message: 'Server Error' });
       }
     });
+
+
+    // get api to get user profile data
+    app.get("/userProfile", async (req, res) => {
+      const email = req.query.email;
+      const user = await usersCollection.findOne({ email: email });
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json(user);
+    });
+
 
 
     // POST /users
@@ -613,6 +626,22 @@ async function run() {
         res.send({ success: true, result });
       } catch (error) {
         res.status(500).send({ success: false, message: 'Failed to update payment', error: error.message });
+      }
+    });
+
+
+    // All Update 
+
+    app.get("/allUpdate", async (req, res) => {
+      try {
+        const length = parseInt(req.query.length);
+        let cursor = updatesCollection.find().sort({ createdAt: -1 });
+        if (!isNaN(length)) cursor = cursor.limit(length);
+        const updates = await cursor.toArray();
+        res.json(updates);
+      } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Server Error" });
       }
     });
 
