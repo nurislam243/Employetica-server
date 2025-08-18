@@ -635,15 +635,27 @@ async function run() {
     app.get("/allUpdate", async (req, res) => {
       try {
         const length = parseInt(req.query.length);
-        let cursor = updatesCollection.find().sort({ createdAt: -1 });
-        if (!isNaN(length)) cursor = cursor.limit(length);
-        const updates = await cursor.toArray();
+
+        let pipeline = [
+          {
+            $addFields: {
+              parsedDate: { $toDate: "$date" } // string → Date
+            }
+          },
+          { $sort: { parsedDate: -1 } }
+        ];
+
+        if (!isNaN(length)) pipeline.push({ $limit: length });
+
+        const updates = await updatesCollection.aggregate(pipeline).toArray();
+
         res.json(updates);
       } catch (err) {
         console.error(err);
         res.status(500).json({ message: "Server Error" });
       }
     });
+
 
 
 
